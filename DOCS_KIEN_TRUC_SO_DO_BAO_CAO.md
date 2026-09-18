@@ -431,7 +431,7 @@ graph TD
 
 ## 3.3 Sơ Đồ Hoạt Động Nghiệp Vụ (Activity Diagrams)
 
-### Luồng 1: Quy trình Đặt hàng & Thanh toán (Checkout Flow)
+### Luồng 1: Quy trình Đặt hàng & Thanh toán Chuẩn TMĐT B2C (Checkout Flow)
 ```mermaid
 stateDiagram-v2
     [*] --> DuyetGioHang: Khách hàng vào trang Giỏ hàng (/cart)
@@ -440,7 +440,13 @@ stateDiagram-v2
     state KiemTraGio <<choice>>
     KiemTraGio --> GioRong: Số lượng = 0
     GioRong --> DuyetGioHang: Báo lỗi và Quay lại xem sách
-    KiemTraGio --> NhapThongTin: Giỏ hàng hợp lệ
+    KiemTraGio --> KiemTraAuth: Giỏ hàng có sách (>= 1)
+
+    state KiemTraAuth <<choice>>
+    KiemTraAuth --> YeuCauDangNhap: Chưa đăng nhập (Khách vãng lai)
+    YeuCauDangNhap --> TrangAuth: Chuyển hướng sang /auth?redirect=/checkout
+    TrangAuth --> NhapThongTin: Đăng nhập hoặc Đăng ký thành công
+    KiemTraAuth --> NhapThongTin: Đã có tài khoản đăng nhập
     
     NhapThongTin --> ChonPhuongThuc: Điền Họ tên, SĐT, Địa chỉ nhận hàng
     
@@ -452,21 +458,21 @@ stateDiagram-v2
     SinhMaQR --> LuuDonHang: Chờ xác nhận chuyển khoản
     ThanhToanCOD --> LuuDonHang: Xác nhận đơn
     
-    LuuDonHang --> TruTonKho: Mở Prisma Transaction tạo Order và OrderItems
-    TruTonKho --> XoaGioHang: Trừ stockQty trong kho
+    LuuDonHang --> TruTonKho: Mở Prisma Transaction tạo Order gắn userId và OrderItems
+    TruTonKho --> XoaGioHang: Trừ stockQty trong kho và Tăng soldCount
     XoaGioHang --> TrangThanhCong: Xóa LocalStorage giỏ hàng và Điều hướng /order/success
     TrangThanhCong --> [*]
 ```
 
-### Luồng 2: Quy trình Xác thực & Kiểm soát Quyền (Auth & RBAC Middleware Flow)
+### Luồng 2: Quy trình Xác thực & Phân quyền RBAC (Middleware Gateway Flow)
 ```mermaid
 stateDiagram-v2
-    [*] --> NguoiDungGuiRequest: Gửi Request tới URL ví dụ /admin/books
+    [*] --> NguoiDungGuiRequest: Gửi Request tới URL
     NguoiDungGuiRequest --> MiddlewareKiemTra: Next.js Proxy hoặc Middleware đón chặn
 
     state KiemTraLoaiRoute <<choice>>
-    MiddlewareKiemTra --> RouteCongKhai: Route công khai (/, /catalog, /book/*)
-    MiddlewareKiemTra --> RouteYeuCauAuth: Route bảo vệ (/admin/* hoặc /account/*)
+    MiddlewareKiemTra --> RouteCongKhai: Route công khai (/, /catalog, /book/*, /cart)
+    MiddlewareKiemTra --> RouteYeuCauAuth: Route bảo vệ (/checkout, /account/*, /admin/*)
 
     RouteCongKhai --> ChoPhepTruyCap: Render trang bình thường
 
@@ -480,9 +486,9 @@ stateDiagram-v2
     state KiemTraVaiTro <<choice>>
     CoTokenHopLe --> KiemTraVaiTro: Kiểm tra payload.role
     KiemTraVaiTro --> RouteAdmin: Yêu cầu quyền Admin (/admin/*)
-    KiemTraVaiTro --> RouteUser: Yêu cầu tài khoản cá nhân (/account/*)
+    KiemTraVaiTro --> RouteKhachHang: Yêu cầu thanh toán hoặc hồ sơ (/checkout, /account)
 
-    RouteUser --> ChoPhepTruyCap: role in [USER, STAFF, SUPER_ADMIN]
+    RouteKhachHang --> ChoPhepTruyCap: role in [USER, STAFF, SUPER_ADMIN]
     
     state KiemTraQuyenStaff <<choice>>
     RouteAdmin --> KiemTraQuyenStaff: Kiểm tra role
@@ -649,6 +655,7 @@ graph TD
     subgraph PublicRoutes["PHÂN HỆ KHÁCH HÀNG (Public / Customer)"]
         Catalog["Danh Mục & Tìm Kiếm (/catalog)"]
         BookDetail["Chi Tiết Sách (/book/[slug])"]
+        Wishlist["Tủ Sách Yêu Thích (/wishlist)"]
         Cart["Giỏ Hàng (/cart)"]
         Checkout["Thanh Toán (/checkout)"]
         OrderSuccess["Đặt Hàng Thành Công (/order/success)"]
@@ -672,9 +679,11 @@ graph TD
 
     Root --> Catalog
     Root --> BookDetail
+    Root --> Wishlist
     Root --> Cart
     Root --> Auth
     
+    Wishlist -.->|Chuyển vào giỏ| Cart
     Cart --> Checkout
     Checkout --> OrderSuccess
     
@@ -700,9 +709,9 @@ graph TD
 > **Quy định báo cáo:** Báo cáo định kỳ **2 tuần một lần** (4 cột mốc lớn) kèm nhật ký công việc chi tiết từng tuần.
 
 ```
-[TUẦN 1 - 2] =============> 🎯 BÁO CÁO ĐỢT 1 (20/09/2026): Nền tảng, Database & Auth
-[TUẦN 3 - 4] =============> 🎯 BÁO CÁO ĐỢT 2 (04/10/2026): Hoàn thiện 100% Khách Hàng (Catalog, Cart, Checkout)
-[TUẦN 5 - 6] =============> 🎯 BÁO CÁO ĐỢT 3 (18/10/2026): Hoàn thiện 100% Phân Hệ Admin & RBAC
+[TUẦN 1 - 2] =============> 🎯 BÁO CÁO ĐỢT 1 (20/09/2026): Nền tảng, Database & Auth [HOÀN THÀNH 100%]
+[TUẦN 3 - 4] =============> 🎯 BÁO CÁO ĐỢT 2 (04/10/2026): Storefront Khách Hàng (Catalog, Cart, Checkout)
+[TUẦN 5 - 6] =============> 🎯 BÁO CÁO ĐỢT 3 (18/10/2026): Phân Hệ Admin & Phân Quyền RBAC
 [TUẦN 7 - 8] =============> 🎯 BÁO CÁO ĐỢT 4 (30/10/2026): Testing UAT, Deploy Production & Bảo Vệ
 ```
 
@@ -722,6 +731,7 @@ graph TD
 ## 4.2 Bảng Chi Tiết Công Việc Từng Tuần (Tuần 1 đến Tuần 8)
 
 ### Tuần 1: Khởi động dự án & Đặc tả kiến trúc (07/09 — 13/09/2026)
+*Trạng thái: **ĐÃ HOÀN THÀNH 100%***
 * **Mục tiêu:** Định vị mô hình B2C, loại bỏ các thành phần râu ria của prototype cũ, thiết kế ERD.
 * **Đầu việc cụ thể:**
   - [x] Rà soát Proposal đồ án liên ngành, chốt mô hình B2C (bỏ bán sách cũ C2C, bỏ voucher, bỏ feed rao bán cá nhân).
@@ -729,25 +739,34 @@ graph TD
   - [x] Thiết kế sơ bộ bản vẽ ERD 14 bảng dữ liệu và sơ đồ Use Case tổng quan.
   - [x] Thiết lập Git repository cục bộ và remote GitHub an toàn.
 
-### Tuần 2: Hiện thực hóa nền tảng, Database & Auth (14/09 — 20/09/2026) — *[ĐANG DIỄN RA]*
+### Tuần 2: Hiện thực hóa nền tảng, Database & Auth (14/09 — 20/09/2026)
+*Trạng thái: **ĐÃ HOÀN THÀNH 100% (Đạt Mốc Báo Cáo 1)***
 * **Mục tiêu:** Đưa Database lên Cloud, hoàn thành hệ thống Auth và dựng Shared Layout.
 * **Đầu việc cụ thể:**
   - [x] Tạo dự án Next.js 15 tại thư mục gốc; lưu trữ code cũ vào [`legacy/`](file:///e:/to-sach-studio/legacy).
   - [x] Viết [`prisma/schema.prisma`](file:///e:/to-sach-studio/prisma/schema.prisma) 14 models; cấu hình Pooler và Direct URL.
   - [x] Đẩy bảng lên Supabase (`prisma db push`); viết và nạp `prisma/seed.ts` (4 users, 8 sách, 15 danh mục).
   - [x] Viết bộ xác thực Custom JWT (`src/lib/auth.ts`) và RBAC Proxy (`src/middleware.ts`).
-  - [ ] Di chuyển Header và Footer B2C từ `legacy/` sang Next.js; tạo `CartContext` LocalStorage.
-  - [ ] Dựng giao diện sơ bộ Trang chủ (`src/app/page.tsx`) kết nối Prisma query sách thật.
-  - 🎯 **Nhiệm vụ báo cáo:** Nộp báo cáo Đợt 1 cho Giảng viên hướng dẫn (Kiến trúc, Database và Auth).
+  - [x] Dựng Header chuẩn Figma: Bố cục 3 cột, triệt tiêu Zero CLS, Top Bar marquee chạy từ trái sang phải, Mega Menu danh mục.
+  - [x] Chuẩn hóa Typography: Font `Plus Jakarta Sans` hỗ trợ trọn vẹn dải ký tự và dấu tiếng Việt.
+  - [x] Bộ nhận diện thương hiệu: Logo Tổ Sách từ `UI/logo - icon/Group.svg` và favicon tab trình duyệt `src/app/icon.svg`.
+  - [x] Xây dựng CartContext với cơ chế Smart Cart Merge (cách ly user/guest, bảo mật đăng xuất).
+  - [x] Dựng giao diện Trang chủ (`src/app/page.tsx`) kết nối Prisma query sách thật từ Supabase.
+  - [x] Xây dựng Engine Tủ sách Yêu thích (`WishlistContext.tsx`) và trang `/wishlist`.
+  - [x] Kết nối Catalog dữ liệu thật 100% từ Database Supabase, đếm đúng số sách theo thể loại/NXB.
+  - [x] Kiểm thử biên dịch & Type Safety: `npx tsc --noEmit` đạt 0 lỗi, các trang render HTTP 200.
+  - 🎯 **Nhiệm vụ báo cáo:** Đạt Mốc Báo Cáo 1 (Kiến trúc, Database, Auth và Brand Identity).
 
 ### Tuần 3: Danh Mục Sách & Trang Chi Tiết (21/09 — 27/09/2026)
+*Trạng thái: **ĐANG THỰC HIỆN / TIẾP TỤC HOÀN THIỆN***
 * **Mục tiêu:** Xây dựng xong trang duyệt sách theo danh mục và trang xem chi tiết sách.
 * **Đầu việc cụ thể:**
-  - [ ] Xây dựng trang `/catalog`: Bộ lọc cây danh mục 3 tầng (L1 - L2 - L3), lọc khoảng giá, lọc sao đánh giá.
+  - [ ] Nâng cấp bộ lọc Catalog: Bộ lọc cây danh mục 3 tầng (L1 - L2 - L3), lọc khoảng giá, lọc NXB, lọc tình trạng kho.
+  - [ ] Tìm kiếm sách toàn văn theo từ khóa hỗ trợ tiếng Việt không dấu.
   - [ ] Tích hợp tính năng sắp xếp: Giá tăng dần, Giá giảm dần, Mới nhất, Bán chạy nhất.
   - [ ] Xây dựng trang `/book/[slug]`: Render thông tin sách, thư viện ảnh bìa, thông số xuất bản (NXB, số trang, kích thước, định dạng).
   - [ ] Hiển thị danh sách đánh giá đã duyệt từ bảng `reviews` và tính toán sao trung bình.
-  - [ ] Xử lý nút "Thêm vào giỏ hàng" và "Mua ngay".
+  - [ ] Xử lý nút "Thêm vào giỏ hàng" và "Mua ngay" (chuyển tiếp tới `/cart` hoặc `/checkout`).
 
 ### Tuần 4: Giỏ Hàng & Quy Trình Thanh Toán Hoàn Chỉnh (28/09 — 04/10/2026)
 * **Mục tiêu:** Khách hàng có thể đặt hàng thành công và hệ thống lưu đơn vào Database thật.
